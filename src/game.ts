@@ -9,6 +9,7 @@ export interface GameCallbacks {
   onStationLeave: () => void;
   onFirstMove: () => void;
   onProgress: (visited: number, total: number) => void;
+  onStats: (score: number, coins: number, best: number) => void;
 }
 
 function box(
@@ -176,12 +177,26 @@ export class Game {
   private raf = 0;
   private occupied = new Set<string>();
   private cars: Array<{ mesh: THREE.Group; dir: 1 | -1; laneZ: number; speed: number; minX: number; maxX: number; offset: number }> = [];
+  private coins: Array<{ mesh: THREE.Mesh; x: number; z: number; collected: boolean }> = [];
+  private score = 0;
+  private coinsCollected = 0;
+  private bestScore = 0;
+  private crashFlash = 0;
+  private isDead = false;
+  private audioCtx: AudioContext | null = null;
+  private musicGain: GainNode | null = null;
+  private musicStarted = false;
+  private musicTimer = 0;
+  private resetTimeout = 0;
+  private sun!: THREE.DirectionalLight;
 
   constructor(private canvas: HTMLCanvasElement, private cb: GameCallbacks) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.1;
 
     this.scene.background = new THREE.Color(0xbfe8ff);
     this.scene.fog = new THREE.Fog(0xbfe8ff, 18, 40);
@@ -194,6 +209,9 @@ export class Game {
     this.player.position.set(0, 0, 0);
     this.scene.add(this.player);
 
+    this.syncHud();
+    this.initAudio();
+
     window.addEventListener('keydown', this.onKey);
     window.addEventListener('resize', this.onResize);
     this.onResize();
@@ -205,6 +223,107 @@ export class Game {
     window.removeEventListener('keydown', this.onKey);
     window.removeEventListener('resize', this.onResize);
     this.renderer.dispose();
+    this.audioCtx?.close();
+  }
+
+  private initAudio() {
+    if (typeof window === 'undefined') return;
+    const AudioCtor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioCtor) return;
+    this.audioCtx = new AudioCtor();
+    this.musicGain = this.audioCtx.createGain();
+    this.musicGain.gain.value = 0.06;
+    this.musicGain.connect(this.audioCtx.destination);
+  }
+
+  private startMusic() {
+    if (!this.audioCtx || !this.musicGain || this.musicStarted) return;
+    this.musicStarted = true;
+    const notes = [220, 277, 330, 392, 330, 277, 247, 220];
+    let i = 0;
+    const playNote = () => {
+      if (!this.audioCtx || !this.musicGain) return;
+      const osc = this.audioCtx.createOscillator();
+      const gain = this.audioCtx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.value = notes[i % notes.length];
+      gain.gain.value = 0.0001;
+      osc.connect(gain);
+      gain.connect(this.musicGain);
+      gain.gain.exponentialRampToValueAtTime(0.04, this.audioCtx.currentTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, this.audioCtx.currentTime + 0.22);
+      osc.start();
+      osc.stop(this.audioCtx.currentTime + 0.23);
+      i += 1;
+    };
+    const interval = window.setInterval(playNote, 220);
+    (window as typeof window & { __musicInterval?: number }).__musicInterval = interval;
+  }
+
+  private syncHud() {
+    this.cb.onStats(this.score, this.coinsCollected, this.bestScore);
+  }
+
+  private resetPlayerToStart() {
+    this.pos.x = 0;
+    this.pos.z = 0;
+    this.player.position.set(0, 0, 0);
+    this.player.rotation.y = 0;
+    this.player.scale.set(1, 1, 1);
+    this.isDead = false;
+    this.queue = [];
+    this.hopping = false;
+    this.hopT = 0;
+    this.activeStation = null;
+    this.cb.onStationLeave();
+    this.score = Math.max(0, this.score - 10);
+    this.syncHud();
+  }
+
+  private spawnCoins() {
+    const positions = [
+      [-5, 4], [-3, 10], [0, 16], [4, 20], [0, 27],
+      [-6, 18], [6, 8], [2, 13], [-2, 23], [7, 15],
+    ];
+    this.coins = positions.map(([x, z], index) => {
+      const coin = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.12, 0.12, 0.04, 12),
+        new THREE.MeshStandardMaterial({ color: 0xfbbf24, emissive: 0xfbbf24, emissiveIntensity: 0.7 })
+      );
+      coin.rotation.z = Math.PI / 2;
+      coin.position.set(x, 0.7 + (index % 2) * 0.05, z);
+      this.scene.add(coin);
+      return { mesh: coin, x, z, collected: false };
+    });
+  }
+
+  private collectCoinIfNeeded() {
+    for (const coin of this.coins) {
+      if (coin.collected) continue;
+      const dx = this.player.position.x - coin.mesh.position.x;
+      const dz = this.player.position.z - coin.mesh.position.z;
+      if (Math.abs(dx) < 0.6 && Math.abs(dz) < 0.6) {
+        coin.collected = true;
+        coin.mesh.visible = false;
+        this.coinsCollected += 1;
+        this.score += 25;
+        if (this.score > this.bestScore) {
+          this.bestScore = this.score;
+        }
+        this.syncHud();
+        break;
+      }
+    }
+  }
+
+  private hitCar() {
+    if (this.isDead) return;
+    this.isDead = true;
+    this.crashFlash = 1;
+    this.resetTimeout = 0.9;
+    this.score = 0;
+    this.syncHud();
+    this.resetPlayerToStart();
   }
 
   private buildWorld() {
@@ -221,7 +340,6 @@ export class Game {
     this.scene.add(amb, sun);
     this.sun = sun;
 
-    // ground tiles (checker grass) + roads at certain rows
     const roadRows = new Set([4, 8, 13, 17, 22]);
     const grassA = new THREE.MeshLambertMaterial({ color: 0x8ed14f });
     const grassB = new THREE.MeshLambertMaterial({ color: 0x7cc740 });
@@ -243,7 +361,6 @@ export class Game {
       }
     }
 
-    // stations
     for (const st of stations) {
       const b = makeStationBuilding(st);
       this.scene.add(b);
@@ -253,7 +370,6 @@ export class Game {
       this.occupied.add(`${st.x},${st.z}`);
     }
 
-    // scatter trees deterministically, away from stations & roads
     const rand = mulberry(42);
     for (let i = 0; i < 90; i++) {
       const x = Math.floor(rand() * (WORLD.maxX - WORLD.minX + 5)) + WORLD.minX - 2;
@@ -290,9 +406,9 @@ export class Game {
         });
       }
     }
-  }
 
-  private sun!: THREE.DirectionalLight;
+    this.spawnCoins();
+  }
 
   private onResize = () => {
     const w = window.innerWidth;
@@ -313,23 +429,26 @@ export class Game {
       KeyW: [0, 1],
       ArrowDown: [0, -1],
       KeyS: [0, -1],
-      ArrowLeft: [-1, 0],
-      KeyA: [-1, 0],
-      ArrowRight: [1, 0],
-      KeyD: [1, 0],
+      ArrowLeft: [1, 0],
+      KeyA: [1, 0],
+      ArrowRight: [-1, 0],
+      KeyD: [-1, 0],
     };
     const dir = map[e.code];
     if (!dir) return;
     e.preventDefault();
+    this.startMusic();
     this.enqueue(dir);
   };
 
   /** public for touch controls */
   move(dx: number, dz: number) {
+    this.startMusic();
     this.enqueue([dx, dz]);
   }
 
   private enqueue(dir: [number, number]) {
+    if (this.isDead) return;
     if (this.queue.length < 2) this.queue.push(dir);
     if (!this.moved) {
       this.moved = true;
@@ -346,10 +465,14 @@ export class Game {
   }
 
   private tryHop(dx: number, dz: number) {
+    if (this.isDead) return;
     const nx = this.pos.x + dx;
     const nz = this.pos.z + dz;
     if (nx < WORLD.minX || nx > WORLD.maxX || nz < WORLD.minZ || nz > WORLD.maxZ) return;
-    if (this.isCarAt(nx, nz)) return;
+    if (this.isCarAt(nx, nz)) {
+      this.hitCar();
+      return;
+    }
     this.player.rotation.y = Math.atan2(dx, dz);
     if (this.occupied.has(`${nx},${nz}`)) {
       this.hopFrom.copy(this.player.position);
@@ -364,6 +487,11 @@ export class Game {
     this.hopTo.set(nx * TILE, 0, nz * TILE);
     this.hopping = true;
     this.hopT = 0;
+    this.score += 5;
+    if (this.score > this.bestScore) {
+      this.bestScore = this.score;
+    }
+    this.syncHud();
   }
 
   private checkStation() {
@@ -392,6 +520,13 @@ export class Game {
     this.raf = requestAnimationFrame(this.loop);
     const dt = Math.min(this.clock.getDelta(), 0.05);
     const t = this.clock.elapsedTime;
+
+    if (this.resetTimeout > 0) {
+      this.resetTimeout -= dt;
+      if (this.resetTimeout <= 0) {
+        this.resetPlayerToStart();
+      }
+    }
 
     if (!this.hopping && this.queue.length) {
       const [dx, dz] = this.queue.shift()!;
@@ -427,6 +562,8 @@ export class Game {
       pad.scale.set(s, s, 1);
     }
 
+    this.collectCoinIfNeeded();
+
     const px = this.player.position.x;
     const pz = this.player.position.z;
     const target = new THREE.Vector3(px + 7, 10, pz - 7);
@@ -436,6 +573,7 @@ export class Game {
     this.sun.target.position.set(px, 0, pz);
     this.sun.target.updateMatrixWorld();
 
+    this.renderer.toneMappingExposure = 1.1 + Math.sin(t * 2) * 0.08;
     this.renderer.render(this.scene, this.camera);
   };
 }

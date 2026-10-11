@@ -205,6 +205,6 @@ export const stations: Station[] = [
     body:
       "You made it to the end of the map! I'm always happy to talk about engineering, products, or opportunities. Reach out and let's connect.",
     tags: ['Email', 'LinkedIn', 'GitHub'],
-    link: { href: 'mailto:toufiqhasan.dev@gmail.com', text: 'Email me' },
+    link: { href: 'mailto:toufiqh12@gmail.com', text: 'Email me' },
   },
 ];

@@ -16,6 +16,9 @@ function App() {
   const [station, setStation] = useState<Station | null>(null);
   const [showIntro, setShowIntro] = useState(true);
   const [visited, setVisited] = useState(0);
+  const [score, setScore] = useState(0);
+  const [coins, setCoins] = useState(0);
+  const [best, setBest] = useState(0);
   const total = stations.length;
 
   useEffect(() => {
@@ -25,16 +28,38 @@ function App() {
       onStationLeave: () => setStation(null),
       onFirstMove: () => setShowIntro(false),
       onProgress: (v) => setVisited(v),
+      onStats: (nextScore, nextCoins, nextBest) => {
+        setScore(nextScore);
+        setCoins(nextCoins);
+        setBest(nextBest);
+      },
     });
     gameRef.current = game;
     return () => game.dispose();
   }, []);
 
   const move = (dx: number, dz: number) => gameRef.current?.move(dx, dz);
+  const moveDir = (direction: 'up' | 'left' | 'down' | 'right') => {
+    switch (direction) {
+      case 'up':
+        return move(0, 1);
+      case 'left':
+        return move(1, 0);
+      case 'down':
+        return move(0, -1);
+      case 'right':
+        return move(-1, 0);
+      default:
+        return undefined;
+    }
+  };
 
   return (
     <div className="app">
       <canvas ref={canvasRef} className="game-canvas" />
+
+      <div className="ray-overlay" aria-hidden="true" />
+      <div className="scanlines" aria-hidden="true" />
 
       {/* Top HUD */}
       <header className="hud-top">
@@ -42,9 +67,24 @@ function App() {
           <h1>Toufiq Hasan</h1>
           <p>Software Engineer — Full Stack &amp; Mobile</p>
         </div>
-        <div className="hud-progress" title="Places discovered">
-          <span className="hud-progress-dot" />
-          {visited}/{total} discovered
+
+        <div className="hud-right">
+          <div className="hud-scoreboard">
+            <span>Score</span>
+            <strong>{score}</strong>
+          </div>
+          <div className="hud-scoreboard coin-box">
+            <span>Coins</span>
+            <strong>{coins}</strong>
+          </div>
+          <div className="hud-scoreboard best-box">
+            <span>Best</span>
+            <strong>{best}</strong>
+          </div>
+          <div className="hud-progress" title="Places discovered">
+            <span className="hud-progress-dot" />
+            {visited}/{total} discovered
+          </div>
         </div>
       </header>
 
@@ -89,16 +129,16 @@ function App() {
 
       {/* Touch controls */}
       <div className="dpad" aria-label="Movement controls">
-        <button className="dpad-up" onClick={() => move(0, 1)} aria-label="Move forward">▲</button>
-        <button className="dpad-left" onClick={() => move(-1, 0)} aria-label="Move left">◀</button>
-        <button className="dpad-down" onClick={() => move(0, -1)} aria-label="Move back">▼</button>
-        <button className="dpad-right" onClick={() => move(1, 0)} aria-label="Move right">▶</button>
+        <button className="dpad-up" onClick={() => moveDir('up')} aria-label="Move forward">▲</button>
+        <button className="dpad-left" onClick={() => moveDir('left')} aria-label="Move left">◀</button>
+        <button className="dpad-down" onClick={() => moveDir('down')} aria-label="Move back">▼</button>
+        <button className="dpad-right" onClick={() => moveDir('right')} aria-label="Move right">▶</button>
       </div>
 
       <footer className="hud-bottom">
-        <a href="mailto:toufiqhasan.dev@gmail.com">Email</a>
-        <a href="https://www.linkedin.com/in/toufiqhasan" target="_blank" rel="noreferrer">LinkedIn</a>
-        <a href="https://github.com/toufiqhasan" target="_blank" rel="noreferrer">GitHub</a>
+        <a href="mailto:toufiqh12@gmail.com">Email</a>
+        <a href="https://www.linkedin.com/in/toufiqh/" target="_blank" rel="noreferrer">LinkedIn</a>
+        <a href="https://github.com/toufiqh180-bot" target="_blank" rel="noreferrer">GitHub</a>
       </footer>
     </div>
   );

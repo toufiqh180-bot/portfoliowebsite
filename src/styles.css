@@ -292,6 +292,66 @@ kbd {
   transform: translateY(-2px);
 }
 
+/* ---------- Ray overlays & scanlines ---------- */
+.ray-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.18), rgba(255,255,255,0.02));
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
+
+.scanlines {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.05),
+    rgba(255, 255, 255, 0.05) 1px,
+    rgba(0, 0, 0, 0.04) 2px,
+    rgba(0, 0, 0, 0.04) 3px
+  );
+  pointer-events: none;
+  mix-blend-mode: soft-light;
+}
+
+/* ---------- Scoreboard ---------- */
+.hud-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.hud-scoreboard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.88);
+  border: 3px solid #14213d;
+  border-radius: 12px;
+  padding: 6px 10px;
+  min-width: 72px;
+  box-shadow: 0 4px 0 rgba(20, 33, 61, 0.25);
+}
+
+.hud-scoreboard span {
+  font-size: 0.62rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.08rem;
+  color: #475569;
+}
+
+.hud-scoreboard strong {
+  font-size: 1rem;
+  color: #14213d;
+}
+
+.coin-box strong { color: #ca8a04; }
+.best-box strong { color: #7c3aed; }
+
 /* ---------- Mobile ---------- */
 @media (max-width: 640px) {
   .hud-name h1 { font-size: 1.1rem; }
@@ -311,4 +371,18 @@ kbd {
   .dpad button { width: 52px; height: 52px; }
 
   .hud-bottom { display: none; }
+
+  .hud-top {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .hud-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .hud-scoreboard {
+    min-width: 64px;
+  }
 }
